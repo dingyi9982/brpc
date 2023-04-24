@@ -22,6 +22,7 @@
 #include <brpc/server.h>
 #include "echo.pb.h"
 #include <brpc/stream.h>
+#include <thread>
 
 DEFINE_bool(send_attachment, true, "Carry attachment along with response");
 DEFINE_int32(port, 8001, "TCP Port of this server");
@@ -55,7 +56,10 @@ public:
     StreamingEchoService() : _sd(brpc::INVALID_STREAM_ID) {}
     virtual ~StreamingEchoService() {
         brpc::StreamClose(_sd);
-    };
+        if (_th.joinable()) {
+            _th.join();
+        }
+    }
     virtual void Echo(google::protobuf::RpcController* controller,
                       const example::EchoRequest* /*request*/,
                       example::EchoResponse* response,
@@ -73,11 +77,21 @@ public:
             return;
         }
         response->set_message("Accepted stream");
+
+        _th = std::thread([&](){
+            while (!brpc::IsAskedToQuit()) {
+                butil::IOBuf msg;
+                msg.append("1111111111");
+                brpc::StreamWrite(_sd, msg);
+                sleep(1);
+            }
+        });
     }
 
 private:
     StreamReceiver _receiver;
     brpc::StreamId _sd;
+    std::thread _th;
 };
 
 int main(int argc, char* argv[]) {
